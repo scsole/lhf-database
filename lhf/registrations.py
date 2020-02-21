@@ -23,7 +23,7 @@ def create_db():
                     )""")
 
 
-def get_new_registrations(input_file='./input.csv'):
+def get_new_registrations(input_file='./new_registrations.csv'):
     """Read registration input (csv) file, return list with new entries.
 
     We assume that the csv input file only contains valid input.
