@@ -131,5 +131,6 @@ dmypy.json
 # Editor files
 .vscode/
 
-# Database files
+# Files containing information
 *.db
+*.csv
