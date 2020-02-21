@@ -1,7 +1,9 @@
 """Registrations module for the LHF database."""
 
 import csv
+import datetime
 import sqlite3
+
 
 def create_db():
     """Create registrations database."""
@@ -20,6 +22,7 @@ def create_db():
                     registration_datetime TEXT NOT NULL
                     )""")
 
+
 def get_new_registrations(input_file='./input.csv'):
     """Read registration input (csv) file, return list with new entries.
 
@@ -33,6 +36,7 @@ def get_new_registrations(input_file='./input.csv'):
         for row in reader:
             input_registrations.append(row)
     return input_registrations
+
 
 def add_new_registrations():
     """Add new registrations to the database.
@@ -56,33 +60,44 @@ def add_new_registrations():
                                 registration_datetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
         for reg in reglist:
             # Only store necessary info in the database
-            reginfo = (reg[2],  # first_name
-                    reg[3],     # last_name
-                    reg[4],     # gender
-                    reg[5],     # dob
-                    reg[7],     # club
-                    reg[1],     # email
-                    reg[8],     # medical_conditions
-                    reg[9],     # emergency_name
-                    reg[10],    # emergency_contact
-                    reg[0],     # registration_datetime
+            reginfo = (reg[2].strip(),  # first_name
+                    reg[3].strip(),     # last_name
+                    reg[4].strip(),     # gender
+                    reg[5].strip(),     # dob
+                    reg[7].strip(),     # club
+                    reg[1].strip(),     # email
+                    reg[8].strip(),     # medical_conditions
+                    reg[9].strip(),     # emergency_name
+                    reg[10].strip(),    # emergency_contact
+                    reg[0].strip(),     # registration_datetime
                     )
             c.execute(sql_insert_statement, reginfo)
 
-def create_start_list():
-    """Generate start list for Webscorer."""
-    c.execute("SELECT registration_id, first_name, last_name FROM registrations")
-    for reg in c.fetchall():
-        print(reg)
 
-def create_registrations_list(sort="lname"):
-    """Generate registration list for printing."""
-    pass
+def create_start_list(race_date=datetime.date.today()):
+    """Generate start list for Webscorer."""
+    print(race_date)
+
+
+def create_registrations_list(outfile='reg_print.csv'):
+    """Generate registration list in csv file for printing."""
+    c.execute("""SELECT last_name, first_name, registration_id
+                FROM registrations
+                ORDER BY LOWER(last_name), LOWER(first_name) ASC""")
+    reglist = c.fetchall()
+    regheaders = ('Last Name', 'First Name', 'Bib Number')
+
+    with open(outfile, 'w') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(regheaders)
+        writer.writerows(reglist)
+
 
 def last_entry_datetime():
     """Return the time stamp of the newest registration"""
     c.execute("SELECT MAX(datetime(registration_datetime)) FROM registrations")
     return c.fetchone()
+
 
 if __name__ == "__main__":
     #conn = sqlite3.connect('lhf.db')
@@ -92,7 +107,6 @@ if __name__ == "__main__":
     create_db()
     add_new_registrations()
     create_start_list()
-
-    #print(last_entry_datetime()[0])
+    create_registrations_list()
 
     conn.close()
