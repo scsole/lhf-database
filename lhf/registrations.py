@@ -1,7 +1,7 @@
 """Registrations module for the LHF database."""
 
 import csv
-from datetime import datetime
+from datetime import datetime, date
 import re
 import sqlite3
 
@@ -15,13 +15,13 @@ def create_db():
                     first_name TEXT NOT NULL,
                     last_name TEXT NOT NULL,
                     gender TEXT NOT NULL,
-                    dob TEXT NOT NULL,
+                    dob date NOT NULL,
                     club TEXT,
                     email TEXT NOT NULL,
                     medical_conditions TEXT,
                     emergency_name TEXT,
                     emergency_contact TEXT,
-                    registration_timestamp TEXT NOT NULL
+                    registration_timestamp timestamp NOT NULL
                     )""")
 
 
@@ -53,48 +53,57 @@ def get_new_registrations(reg_input='./new_registrations.csv', dup_output='./dup
         reader = csv.DictReader(regfile, input_csv_headers)
         dupregs.append(['Existing Registration ID'] + list(next(reader).values())) # skip actual csv headers
         invregs.append(['Invalid Reason'] + dupregs[0][1:-1])
-        print()
-        print()
+
         for row in reader:
-            print(row)
             # Check for duplicates
-            c.execute(sql_search_statement, (re.sub(r"[ ']", '_', row['first_name'].strip()), re.sub(r"[ ']", '_',row['last_name'].strip()), row['dob']))
+            try:
+                c.execute(sql_search_statement, (re.sub(r"[ ']", '_', row['first_name'].strip()), re.sub(r"[ ']", '_',row['last_name'].strip()), parse_date(row['dob'])))
+            except ValueError:
+                invregs.append(["DoB does not match {}".format(datefmt)] + list(row.values()))
+                continue
+            
             search = c.fetchone()
             if search is None:
                 newregs.append(row)
 
                 # Convert required strings into dates
                 try:
-                    newregs[-1]['registration_timestamp'] = datetime.strptime(newregs[-1]['registration_timestamp'], datetimefmt)
+                    row['registration_timestamp'] = datetime.strptime(row['registration_timestamp'], datetimefmt)
                 except ValueError:
                     del(newregs[-1])
                     invregs.append(["Timestamp does not match {}".format(datetimefmt)] + list(row.values()))
                     continue
-                try:
-                    newregs[-1]['dob'] = re.sub(r"[ .-]", '/', newregs[-1]['dob'].strip())
-                    newregs[-1]['dob'] = datetime.strptime(newregs[-1]['dob'], datefmt)
-                except ValueError:
-                    newregs[-1]['registration_timestamp'] = datetime.strftime(newregs[-1]['registration_timestamp'], datetimefmt) # restore timestamp format
-                    invregs.append(["DoB does not match {}".format(datefmt)] + list(newregs[-1].values()))
-                    del(newregs[-1])
+                
+                row['dob'] = parse_date(row['dob'])
             else:
                 dupregs.append([search[0]] + list(row.values()))    
 
     # Log duplicate registrations
     if len(dupregs) > 1:
-        print("Found {} duplicate registrations. You can find them in {}".format(len(dupregs) - 1, dup_output))
+        print("Skipped {} duplicate registrations. View them in {}".format(len(dupregs) - 1, dup_output))
         with open(dup_output, 'w') as dupfile:
             writer = csv.writer(dupfile)
             writer.writerows(dupregs)
 
     # Log invalid registrations
     if len(invregs) > 1:
-        print("Found {} invalid registrations. You can find them in {}".format(len(invregs) - 1, inv_output))
+        print("Skipped {} invalid registrations. View them in {}".format(len(invregs) - 1, inv_output))
         with open(inv_output, 'w') as invfile:
             writer = csv.writer(invfile)
             writer.writerows(invregs)
     
     return newregs
+
+
+def parse_date(date_str):
+    """Attempt to format date_str as a date.
+    
+    It is assumed date_str will be in the form %d<sep>%m<sep>%Y. If a date
+    object cannot be created from the string a ValueError is raised.
+    """
+    date_str = re.sub(r"[ .-]", '/', date_str.strip())
+    date_time = datetime.strptime(date_str, "%d/%m/%Y")
+    return date_time.date()
 
 
 def add_registrations(reglist):
@@ -127,7 +136,7 @@ def add_registrations(reglist):
             c.execute(sql_insert_statement, reginfo)
 
 
-def create_start_list(race_date=datetime.now().date()):
+def create_start_list(race_date=date.today()):
     """Generate start list for Webscorer."""
     webscorer_headers = ('Bib', 'First name', 'Last name', 'Team name', 'Age', 'Gender', 'Distance')
     c.execute("""SELECT registration_id, first_name, last_name, club, dob, gender
@@ -137,15 +146,28 @@ def create_start_list(race_date=datetime.now().date()):
 
     # We don't know what distance each runner will undertake ahead of the
     # event. We just need to include each distance at least once.
-    for i,row in enumerate(startlist):
-        startlist[i] = list(row)
+    for i,entry in enumerate(startlist):
+        startlist[i] = list(entry)
         startlist[i].append('5km')
+
+        # Replace DoB with age at time of race
+        startlist[i][4] = years_between(startlist[i][4], race_date)
     startlist[0][-1] = '10km'
 
     with open(startlistfile, 'w') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(webscorer_headers)
         writer.writerows(startlist)
+
+
+def years_between(date1, date2):
+    """Return the number of full years between dates."""
+    if date1 > date2:
+        temp = date2
+        date2 = date1
+        date1 = temp
+    date1_this_year = date(date2.year, date1.month, date1.day)
+    return date2.year - date1.year - (date1_this_year >= date2)
 
 
 def create_registrations_list(outfile='reg_print.csv'):
@@ -163,14 +185,14 @@ def create_registrations_list(outfile='reg_print.csv'):
 
 
 if __name__ == "__main__":
-    #conn = sqlite3.connect('lhf.db')
-    conn = sqlite3.connect(':memory:')  # test the database in memory
+    #conn = sqlite3.connect('lhf.db', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
+    conn = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
     c = conn.cursor()
 
     create_db()
     add_registrations(get_new_registrations())
     add_registrations(get_new_registrations('./fixed.csv'))
     create_start_list()
-    create_registrations_list()
+    #create_registrations_list()
 
     conn.close()
