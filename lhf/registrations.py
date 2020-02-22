@@ -2,6 +2,7 @@
 
 import csv
 import datetime
+import re
 import sqlite3
 
 
@@ -30,22 +31,26 @@ def get_new_registrations(reg_input='./new_registrations.csv', dup_output='./dup
     We assume that the csv input file already has its contents checked
     for validity. Duplicate enties are loged to dup_output if any
     exist. Registrations are considered duplicate if they do not have a
-    unique combination of First name, Last name, and DoB.
+    unique combination of First name, Last name, and DoB. Any
+    duplicates in reg_input will NOT be detected.
     """
+    
     newregs = []    # contains all new registrations
     dupregs = []    # contains all duplicate registrations w/ headers
+    
+    # Keys for newregs. These must match the order of the headers in reg_input.
+    input_csv_headers = ('registration_timestamp', 'email', 'first_name', 'last_name', 'gender', 'dob', 'age', 'club', 'medical_conditions', 'emergency_name', 'emergency_contact', 'accepted_terms')
+
     sql_search_statement = """SELECT registration_id
                             FROM registrations
-                            WHERE first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE AND dob = ?"""
+                            WHERE first_name LIKE ? AND last_name LIKE ? AND dob = ?"""
     
-    # Keys for newregs. These must match the order of the reg_input headers
-    input_csv_headers = ('registration_timestamp', 'email', 'first_name', 'last_name', 'gender', 'dob', 'age', 'club', 'medical_conditions', 'emergency_name', 'emergency_contact', 'accepted_terms')
 
     with open(reg_input) as regfile:
         reader = csv.DictReader(regfile, input_csv_headers)
         dupregs.append(['Existing Registration ID'] + list(next(reader).values())) # skip actual csv headers
         for row in reader:
-            c.execute(sql_search_statement, (row['first_name'].strip(), row['last_name'].strip(), row['dob']))
+            c.execute(sql_search_statement, (re.sub("[ ']", '_', row['first_name'].strip()), re.sub("[ ']", '_',row['last_name'].strip()), row['dob']))
             search = c.fetchone()
             if search is None:
                 newregs.append(row)
@@ -94,11 +99,27 @@ def add_registrations(reglist):
 
 def create_start_list(race_date=datetime.date.today()):
     """Generate start list for Webscorer."""
-    return race_date
+    webscorer_headers = ('Bib', 'First name', 'Last name', 'Team name', 'Age', 'Gender', 'Distance')
+    c.execute("""SELECT registration_id, first_name, last_name, club, dob, gender
+                FROM registrations""")
+    startlist = c.fetchall()
+    startlistfile = './Startlist{}.csv'.format(race_date.strftime('%Y%m%d'))
+
+    # We don't know what distance each runner will undertake ahead of the
+    # event. We just need to include each distance at least once.
+    for i,row in enumerate(startlist):
+        startlist[i] = list(row)
+        startlist[i].append('5km')
+    startlist[0][-1] = '10km'
+
+    with open(startlistfile, 'w') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(webscorer_headers)
+        writer.writerows(startlist)
 
 
 def create_registrations_list(outfile='reg_print.csv'):
-    """Generate registration list in csv file for printing."""
+    """Create a csv file containing registration ids sorted by last name."""
     c.execute("""SELECT last_name, first_name, registration_id
                 FROM registrations
                 ORDER BY LOWER(last_name), LOWER(first_name) ASC""")
@@ -111,12 +132,6 @@ def create_registrations_list(outfile='reg_print.csv'):
         writer.writerows(reglist)
 
 
-def last_entry_datetime():
-    """Return the time stamp of the newest registration"""
-    c.execute("SELECT MAX(datetime(registration_datetime)) FROM registrations")
-    return c.fetchone()
-
-
 if __name__ == "__main__":
     #conn = sqlite3.connect('lhf.db')
     conn = sqlite3.connect(':memory:')  # test the database in memory
@@ -124,6 +139,7 @@ if __name__ == "__main__":
 
     create_db()
     add_registrations(get_new_registrations())
+    #add_registrations(get_new_registrations('./new_dup.csv'))
     create_start_list()
     create_registrations_list()
 
