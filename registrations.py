@@ -1,9 +1,12 @@
 """Registrations module for the LHF database."""
 
-import csv
-from datetime import datetime, date
+import argparse
+import sys
+import os
 import re
 import sqlite3
+import csv
+from datetime import datetime, date
 
 
 def create_db():
@@ -25,15 +28,18 @@ def create_db():
                     )""")
 
 
-def get_new_registrations(reg_input='./new_registrations.csv', dup_output='./duplicate_registrations.csv', inv_output='./invalid_registrations.csv'):
+def get_new_registrations(reg_input='./new_registrations.csv'):
     """Read new registration csv file and return a list with new entries.
 
-    Duplicate enties are loged to dup_output if any
-    exist. Registrations are considered duplicate if they do not have a
-    unique combination of First name, Last name, and DoB. Any
-    duplicates in reg_input will NOT be detected.
+    Duplicate enties are loged to dup_output if any exist. Registrations
+    are considered duplicate if they do not have a unique combination of
+    First name, Last name, and DoB. Any duplicates in reg_input will NOT
+    be detected.
     """
-    
+    os.makedirs("./registrations_output", exist_ok=True)
+    dup_output = "./registrations_output/duplicate_registrations.csv"
+    inv_output = "./registrations_output/invalid_registrations.csv"
+
     newregs = []    # new registrations w/o headers
     dupregs = []    # duplicate registrations w/ headers
     invregs = []    # invalid registrations w/ headers
@@ -136,23 +142,28 @@ def add_registrations(reglist):
             c.execute(sql_insert_statement, reginfo)
 
 
-def create_start_list(race_date=date.today()):
+def create_start_list(race_date):
     """Generate start list for Webscorer."""
+    os.makedirs("./startlists", exist_ok=True)
+
     webscorer_headers = ('Bib', 'First name', 'Last name', 'Team name', 'Age', 'Gender', 'Distance')
     c.execute("""SELECT registration_id, first_name, last_name, club, dob, gender
                 FROM registrations""")
     startlist = c.fetchall()
-    startlistfile = './Startlist{}.csv'.format(race_date.strftime('%Y%m%d'))
+    startlistfile = './startlists/startlist{}.csv'.format(race_date.strftime('%Y%m%d'))
 
     # We don't know what distance each runner will undertake ahead of the
     # event. We just need to include each distance at least once.
-    for i,entry in enumerate(startlist):
-        startlist[i] = list(entry)
-        startlist[i].append('5km')
+    if len(startlist) > 0:
+        for i,entry in enumerate(startlist):
+            startlist[i] = list(entry)
+            startlist[i].append('5km')
 
-        # Replace DoB with age at time of race
-        startlist[i][4] = years_between(startlist[i][4], race_date)
-    startlist[0][-1] = '10km'
+            # Replace DoB with age at time of race
+            startlist[i][4] = years_between(startlist[i][4], race_date)
+        startlist[0][-1] = '10km'
+    else:
+        print("warning: the database was empty when creating a start list")
 
     with open(startlistfile, 'w') as csvfile:
         writer = csv.writer(csvfile)
@@ -170,13 +181,19 @@ def years_between(date1, date2):
     return date2.year - date1.year - (date1_this_year >= date2)
 
 
-def create_registrations_list(outfile='reg_print.csv'):
+def create_registrations_list():
     """Create a csv file containing registration ids sorted by last name."""
+    os.makedirs("./registrations_output", exist_ok=True)
+    outfile='./registrations_output/registrations_print.csv'
+
     c.execute("""SELECT last_name, first_name, registration_id
                 FROM registrations
                 ORDER BY LOWER(last_name), LOWER(first_name) ASC""")
     reglist = c.fetchall()
     regheaders = ('Last Name', 'First Name', 'Bib Number')
+
+    if len(reglist)  == 0:
+        print("warning: the database was empty when creating a registrations list")
 
     with open(outfile, 'w') as csvfile:
         writer = csv.writer(csvfile)
@@ -185,14 +202,38 @@ def create_registrations_list(outfile='reg_print.csv'):
 
 
 if __name__ == "__main__":
-    #conn = sqlite3.connect('lhf.db', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
+    parser = argparse.ArgumentParser(description="Manage registrations and produce start lists.")
+    parser.add_argument("-a", help="add new registrations to the database",
+                        action="store_true")
+    parser.add_argument("-s", help="create a startlist for Webscorer",
+                        action="store_true")
+    parser.add_argument("-d", help="date of the next race as YYYY-MM-DD, default=today",
+                        default=date.today())
+    parser.add_argument("-p", help="create a printable registrations list",
+                        action="store_true")
+    args = parser.parse_args()
+    
+    # connect to database and create tables as required
     conn = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
     c = conn.cursor()
-
     create_db()
-    add_registrations(get_new_registrations())
-    add_registrations(get_new_registrations('./fixed.csv'))
-    create_start_list()
-    #create_registrations_list()
+
+    # perform required tasks
+    if args.a:
+        add_registrations(get_new_registrations())
+    
+    if args.s:
+        if isinstance(args.d, str):
+            try:
+                input_date = datetime.strptime(args.d, "%Y-%m-%d")
+            except ValueError:
+                print("error: date D must be given as YYYY-MM-DD", file=sys.stderr)
+                exit()
+        else:
+            input_date = args.d
+        create_start_list(input_date)
+
+    if args.p:
+        create_registrations_list()
 
     conn.close()
