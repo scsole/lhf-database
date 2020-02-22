@@ -20,7 +20,7 @@ def create_db():
                     medical_conditions TEXT,
                     emergency_name TEXT,
                     emergency_contact TEXT,
-                    registration_datetime TEXT NOT NULL
+                    registration_timestamp TEXT NOT NULL
                     )""")
 
 
@@ -34,20 +34,23 @@ def get_new_registrations(reg_input='./new_registrations.csv', dup_output='./dup
     """
     newregs = []    # contains all new registrations
     dupregs = []    # contains all duplicate registrations w/ headers
-    sql_search_statement = """SELECT *
+    sql_search_statement = """SELECT registration_id
                             FROM registrations
                             WHERE first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE AND dob = ?"""
+    
+    # Keys for newregs. These must match the order of the reg_input headers
+    input_csv_headers = ('registration_timestamp', 'email', 'first_name', 'last_name', 'gender', 'dob', 'age', 'club', 'medical_conditions', 'emergency_name', 'emergency_contact', 'accepted_terms')
 
     with open(reg_input) as regfile:
-        reader = csv.reader(regfile)
-        dupregs.append(['Existing Registration ID'] + next(reader)) # file headers
+        reader = csv.DictReader(regfile, input_csv_headers)
+        dupregs.append(['Existing Registration ID'] + list(next(reader).values())) # skip actual csv headers
         for row in reader:
-            c.execute(sql_search_statement, (row[2].strip(), row[3].strip(), row[5]))
+            c.execute(sql_search_statement, (row['first_name'].strip(), row['last_name'].strip(), row['dob']))
             search = c.fetchone()
             if search is None:
                 newregs.append(row)
             else:
-                dupregs.append([search[0]] + row)
+                dupregs.append([search[0]] + list(row.values()))
 
     # Log skiped duplicate registrations
     if len(dupregs) > 1:
@@ -72,20 +75,19 @@ def add_registrations(reglist):
                                 medical_conditions,
                                 emergency_name,
                                 emergency_contact,
-                                registration_datetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                registration_timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
         for reg in reglist:
-            # Only store necessary info in the database
             reginfo = (
-                    reg[2].strip(),     # first_name
-                    reg[3].strip(),     # last_name
-                    reg[4].strip(),     # gender
-                    reg[5],             # dob
-                    reg[7].strip(),     # club
-                    reg[1].strip(),     # email
-                    reg[8].strip(),     # medical_conditions
-                    reg[9].strip(),     # emergency_name
-                    reg[10].strip(),    # emergency_contact
-                    reg[0]              # registration_datetime
+                    reg['first_name'].strip(),
+                    reg['last_name'].strip(),
+                    reg['gender'].strip(),
+                    reg['dob'],
+                    reg['club'].strip(),
+                    reg['email'].strip(),
+                    reg['medical_conditions'].strip(),
+                    reg['emergency_name'].strip(),
+                    reg['emergency_contact'].strip(),
+                    reg['registration_timestamp']
                     )
             c.execute(sql_insert_statement, reginfo)
 
