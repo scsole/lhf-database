@@ -1,7 +1,7 @@
 """Registrations module for the LHF database."""
 
 import csv
-import datetime
+from datetime import datetime
 import re
 import sqlite3
 
@@ -25,18 +25,18 @@ def create_db():
                     )""")
 
 
-def get_new_registrations(reg_input='./new_registrations.csv', dup_output='./duplicate_registrations.csv'):
+def get_new_registrations(reg_input='./new_registrations.csv', dup_output='./duplicate_registrations.csv', inv_output='./invalid_registrations.csv'):
     """Read new registration csv file and return a list with new entries.
 
-    We assume that the csv input file already has its contents checked
-    for validity. Duplicate enties are loged to dup_output if any
+    Duplicate enties are loged to dup_output if any
     exist. Registrations are considered duplicate if they do not have a
     unique combination of First name, Last name, and DoB. Any
     duplicates in reg_input will NOT be detected.
     """
     
-    newregs = []    # contains all new registrations
-    dupregs = []    # contains all duplicate registrations w/ headers
+    newregs = []    # new registrations w/o headers
+    dupregs = []    # duplicate registrations w/ headers
+    invregs = []    # invalid registrations w/ headers
     
     # Keys for newregs. These must match the order of the headers in reg_input.
     input_csv_headers = ('registration_timestamp', 'email', 'first_name', 'last_name', 'gender', 'dob', 'age', 'club', 'medical_conditions', 'emergency_name', 'emergency_contact', 'accepted_terms')
@@ -45,25 +45,55 @@ def get_new_registrations(reg_input='./new_registrations.csv', dup_output='./dup
                             FROM registrations
                             WHERE first_name LIKE ? AND last_name LIKE ? AND dob = ?"""
     
+    # Date formats expected from csv file.
+    datetimefmt = "%d/%m/%Y %H:%M:%S"
+    datefmt = "%d/%m/%Y"
 
     with open(reg_input) as regfile:
         reader = csv.DictReader(regfile, input_csv_headers)
         dupregs.append(['Existing Registration ID'] + list(next(reader).values())) # skip actual csv headers
+        invregs.append(['Invalid Reason'] + dupregs[0][1:-1])
+        print()
+        print()
         for row in reader:
-            c.execute(sql_search_statement, (re.sub("[ ']", '_', row['first_name'].strip()), re.sub("[ ']", '_',row['last_name'].strip()), row['dob']))
+            print(row)
+            # Check for duplicates
+            c.execute(sql_search_statement, (re.sub(r"[ ']", '_', row['first_name'].strip()), re.sub(r"[ ']", '_',row['last_name'].strip()), row['dob']))
             search = c.fetchone()
             if search is None:
                 newregs.append(row)
-            else:
-                dupregs.append([search[0]] + list(row.values()))
 
-    # Log skiped duplicate registrations
+                # Convert required strings into dates
+                try:
+                    newregs[-1]['registration_timestamp'] = datetime.strptime(newregs[-1]['registration_timestamp'], datetimefmt)
+                except ValueError:
+                    del(newregs[-1])
+                    invregs.append(["Timestamp does not match {}".format(datetimefmt)] + list(row.values()))
+                    continue
+                try:
+                    newregs[-1]['dob'] = re.sub(r"[ .-]", '/', newregs[-1]['dob'].strip())
+                    newregs[-1]['dob'] = datetime.strptime(newregs[-1]['dob'], datefmt)
+                except ValueError:
+                    newregs[-1]['registration_timestamp'] = datetime.strftime(newregs[-1]['registration_timestamp'], datetimefmt) # restore timestamp format
+                    invregs.append(["DoB does not match {}".format(datefmt)] + list(newregs[-1].values()))
+                    del(newregs[-1])
+            else:
+                dupregs.append([search[0]] + list(row.values()))    
+
+    # Log duplicate registrations
     if len(dupregs) > 1:
-        print("Found {} duplicate registrations. They can be found in {}".format(len(dupregs) - 1, dup_output))
+        print("Found {} duplicate registrations. You can find them in {}".format(len(dupregs) - 1, dup_output))
         with open(dup_output, 'w') as dupfile:
             writer = csv.writer(dupfile)
             writer.writerows(dupregs)
 
+    # Log invalid registrations
+    if len(invregs) > 1:
+        print("Found {} invalid registrations. You can find them in {}".format(len(invregs) - 1, inv_output))
+        with open(inv_output, 'w') as invfile:
+            writer = csv.writer(invfile)
+            writer.writerows(invregs)
+    
     return newregs
 
 
@@ -97,7 +127,7 @@ def add_registrations(reglist):
             c.execute(sql_insert_statement, reginfo)
 
 
-def create_start_list(race_date=datetime.date.today()):
+def create_start_list(race_date=datetime.now().date()):
     """Generate start list for Webscorer."""
     webscorer_headers = ('Bib', 'First name', 'Last name', 'Team name', 'Age', 'Gender', 'Distance')
     c.execute("""SELECT registration_id, first_name, last_name, club, dob, gender
@@ -139,7 +169,7 @@ if __name__ == "__main__":
 
     create_db()
     add_registrations(get_new_registrations())
-    #add_registrations(get_new_registrations('./new_dup.csv'))
+    add_registrations(get_new_registrations('./fixed.csv'))
     create_start_list()
     create_registrations_list()
 
