@@ -9,11 +9,11 @@ import csv
 from datetime import datetime, date
 
 
-def create_db():
+def create_db(conn):
     """Create registrations database."""
     with conn:
         # We cannot reuse registration_ids so we must use AUTOINCREMENT.
-        c.execute("""CREATE TABLE IF NOT EXISTS registrations (
+        conn.execute("""CREATE TABLE IF NOT EXISTS registrations (
                     registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     first_name TEXT NOT NULL,
                     last_name TEXT NOT NULL,
@@ -28,7 +28,7 @@ def create_db():
                     )""")
 
 
-def get_new_registrations(reg_input='./new_registrations.csv'):
+def get_new_registrations(conn, reg_input='./new_registrations.csv'):
     """Read new registration csv file and return a list with new entries.
 
     Duplicate enties are loged to dup_output if any exist. Registrations
@@ -47,6 +47,7 @@ def get_new_registrations(reg_input='./new_registrations.csv'):
     # Keys for newregs. These must match the order of the headers in reg_input.
     input_csv_headers = ('registration_timestamp', 'email', 'first_name', 'last_name', 'gender', 'dob', 'age', 'club', 'medical_conditions', 'emergency_name', 'emergency_contact', 'accepted_terms')
 
+    c = conn.cursor()
     sql_search_statement = """SELECT registration_id
                             FROM registrations
                             WHERE first_name LIKE ? AND last_name LIKE ? AND dob = ?"""
@@ -82,7 +83,8 @@ def get_new_registrations(reg_input='./new_registrations.csv'):
                 
                 row['dob'] = parse_date(row['dob'])
             else:
-                dupregs.append([search[0]] + list(row.values()))    
+                # Add matched registration_id to the duplicate entry
+                dupregs.append([search[0]] + list(row.values()))
 
     # Log duplicate registrations
     if len(dupregs) > 1:
@@ -112,8 +114,9 @@ def parse_date(date_str):
     return date_time.date()
 
 
-def add_registrations(reglist):
+def add_registrations(conn, reglist):
     """Add registrations to the database."""
+    c = conn.cursor()
     with conn:
         sql_insert_statement = """INSERT INTO registrations(
                                 first_name,
@@ -142,14 +145,12 @@ def add_registrations(reglist):
             c.execute(sql_insert_statement, reginfo)
 
 
-def create_start_list(race_date):
+def create_start_list(conn, race_date):
     """Generate start list for Webscorer."""
     os.makedirs("./startlists", exist_ok=True)
-
     webscorer_headers = ('Bib', 'First name', 'Last name', 'Team name', 'Age', 'Gender', 'Distance')
-    c.execute("""SELECT registration_id, first_name, last_name, club, dob, gender
-                FROM registrations""")
-    startlist = c.fetchall()
+    startlist = conn.execute("""SELECT registration_id, first_name, last_name, club, dob, gender
+                                FROM registrations""").fetchall()
     startlistfile = './startlists/startlist{}.csv'.format(race_date.strftime('%Y%m%d'))
 
     # We don't know what distance each runner will undertake ahead of the
@@ -181,15 +182,14 @@ def years_between(date1, date2):
     return date2.year - date1.year - (date1_this_year >= date2)
 
 
-def create_registrations_list():
+def create_registrations_list(conn):
     """Create a csv file containing registration ids sorted by last name."""
     os.makedirs("./registrations_output", exist_ok=True)
     outfile='./registrations_output/registrations_print.csv'
 
-    c.execute("""SELECT last_name, first_name, registration_id
-                FROM registrations
-                ORDER BY LOWER(last_name), LOWER(first_name) ASC""")
-    reglist = c.fetchall()
+    reglist = conn.execute("""SELECT last_name, first_name, registration_id
+                                FROM registrations
+                                ORDER BY LOWER(last_name), LOWER(first_name) ASC""").fetchall()
     regheaders = ('Last Name', 'First Name', 'Bib Number')
 
     if len(reglist)  == 0:
@@ -215,25 +215,24 @@ if __name__ == "__main__":
     
     # connect to database and create tables as required
     conn = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
-    c = conn.cursor()
-    create_db()
+    create_db(conn)
 
     # perform required tasks
     if args.a:
-        add_registrations(get_new_registrations())
+        add_registrations(conn, get_new_registrations(conn))
     
     if args.s:
         if isinstance(args.d, str):
             try:
-                input_date = datetime.strptime(args.d, "%Y-%m-%d")
+                input_date = datetime.strptime(args.d, "%Y-%m-%d").date()
             except ValueError:
                 print("error: date D must be given as YYYY-MM-DD", file=sys.stderr)
                 exit()
         else:
             input_date = args.d
-        create_start_list(input_date)
+        create_start_list(conn, input_date)
 
     if args.p:
-        create_registrations_list()
+        create_registrations_list(conn)
 
     conn.close()
