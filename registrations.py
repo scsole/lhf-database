@@ -183,9 +183,9 @@ def years_between(date1, date2):
 
 
 def create_registrations_list(conn):
-    """Create a csv file containing registration ids sorted by last name."""
+    """Create a csv file with names and registration ids sorted by last name."""
     os.makedirs("./registrations_output", exist_ok=True)
-    outfile='./registrations_output/registrations_print.csv'
+    outfile="./registrations_output/registrations_list_{}.csv".format(datetime.today().strftime("%Y%b%d-%H%M"))
 
     reglist = conn.execute("""SELECT last_name, first_name, registration_id
                                 FROM registrations
@@ -209,7 +209,7 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument("-d", help="date of the next race as YYYY-MM-DD, default=today",
                         default=date.today())
-    parser.add_argument("-p", help="create a printable registrations list",
+    parser.add_argument("-l", help="create registrations list for the website",
                         action="store_true")
     args = parser.parse_args()
     
@@ -232,7 +232,7 @@ if __name__ == "__main__":
             input_date = args.d
         create_start_list(conn, input_date)
 
-    if args.p:
+    if args.l:
         create_registrations_list(conn)
 
     conn.close()
