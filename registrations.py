@@ -12,9 +12,8 @@ from datetime import datetime, date
 def create_db(conn):
     """Create registrations database."""
     with conn:
-        # We cannot reuse registration_ids so we must use AUTOINCREMENT.
         conn.execute("""CREATE TABLE IF NOT EXISTS registrations (
-                    registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    registration_id INTEGER NOT NULL,
                     first_name TEXT NOT NULL,
                     last_name TEXT NOT NULL,
                     gender TEXT NOT NULL,
@@ -22,9 +21,10 @@ def create_db(conn):
                     club TEXT,
                     email TEXT NOT NULL,
                     medical_conditions TEXT,
-                    emergency_name TEXT,
-                    emergency_contact TEXT,
-                    registration_timestamp timestamp NOT NULL
+                    emergency_name TEXT NOT NULL,
+                    emergency_contact TEXT NOT NULL,
+                    registration_timestamp timestamp NOT NULL,
+                    PRIMARY KEY(last_name, first_name, dob)
                     )""")
 
 
@@ -119,6 +119,7 @@ def add_registrations(conn, reglist):
     c = conn.cursor()
     with conn:
         sql_insert_statement = """INSERT INTO registrations(
+                                registration_id,
                                 first_name,
                                 last_name,
                                 gender,
@@ -128,21 +129,40 @@ def add_registrations(conn, reglist):
                                 medical_conditions,
                                 emergency_name,
                                 emergency_contact,
-                                registration_timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                                registration_timestamp
+                                ) VALUES (
+                                    (SELECT IFNULL(MAX(registration_id), 0) + 1 FROM registrations),
+                                    ?,
+                                    ?,
+                                    ?,
+                                    ?,
+                                    ?,
+                                    ?,
+                                    ?,
+                                    ?,
+                                    ?,
+                                    ?
+                                )"""
         for reg in reglist:
-            reginfo = (
-                    reg['first_name'].strip(),
-                    reg['last_name'].strip(),
-                    reg['gender'].strip(),
-                    reg['dob'],
-                    reg['club'].strip(),
-                    reg['email'].strip(),
-                    reg['medical_conditions'].strip(),
-                    reg['emergency_name'].strip(),
-                    reg['emergency_contact'].strip(),
-                    reg['registration_timestamp']
-                    )
-            c.execute(sql_insert_statement, reginfo)
+            try:
+                reginfo = (
+                        reg['first_name'].strip(),
+                        reg['last_name'].strip(),
+                        reg['gender'].strip(),
+                        reg['dob'],
+                        reg['club'].strip(),
+                        reg['email'].strip(),
+                        reg['medical_conditions'].strip(),
+                        reg['emergency_name'].strip(),
+                        reg['emergency_contact'].strip(),
+                        reg['registration_timestamp']
+                        )
+                c.execute(sql_insert_statement, reginfo)
+            except sqlite3.IntegrityError as e:
+                # Likely a duplicate entry in the input file
+                print(e)
+                print("SKIPED: {}".format(reg.values()))
+                print("info: the skiped entry was likely a duplicate withing the input file")
 
 
 def create_start_list(conn, race_date):
