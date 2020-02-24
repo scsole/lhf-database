@@ -214,7 +214,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # connect to database and create tables as required
-    conn = sqlite3.connect(':memory:', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
+    conn = sqlite3.connect('./lhf.db', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
     create_db(conn)
 
     # perform required tasks
