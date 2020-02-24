@@ -14,7 +14,7 @@ optional arguments:
   -a          add new registrations to the database
   -s          create a startlist for Webscorer
   -d D        date of the next race as YYYY-MM-DD, default=today
-  -p          create a printable registrations list
+  -l          create a registrations list for the website
   ```
 
 ## Examples
