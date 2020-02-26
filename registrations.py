@@ -218,7 +218,7 @@ def years_between(date1, date2):
         date2 = date1
         date1 = temp
     date1_this_year = date(date2.year, date1.month, date1.day)
-    return date2.year - date1.year - (date1_this_year >= date2)
+    return date2.year - date1.year - (date1_this_year > date2)
 
 
 def create_registrations_list(conn):
