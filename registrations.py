@@ -43,6 +43,7 @@ def get_new_registrations(conn, reg_input='./new_registrations.csv'):
     newregs = []    # new registrations w/o headers
     dupregs = []    # duplicate registrations w/ headers
     invregs = []    # invalid registrations w/ headers
+    emptyregs = 0
     
     # Keys for newregs. These must match the order of the headers in reg_input.
     input_csv_headers = ('registration_timestamp', 'email', 'first_name', 'last_name', 'gender', 'dob', 'age', 'club', 'medical_conditions', 'emergency_name', 'emergency_contact', 'accepted_terms')
@@ -62,6 +63,15 @@ def get_new_registrations(conn, reg_input='./new_registrations.csv'):
         invregs.append(['Invalid Reason'] + dupregs[0][1:-1])
 
         for row in reader:
+            # Skip empty rows
+            if (row['registration_timestamp'] is ''
+                    or row['email'] is ''
+                    or row['first_name'] is ''
+                    or row['first_name'] is ''
+                    or row['gender'] is ''
+                    or row['dob'] is ''):
+                emptyregs += 1
+                continue
             # Check for duplicates
             try:
                 c.execute(sql_search_statement, (re.sub(r"[ ']", '_', row['first_name'].strip()), re.sub(r"[ ']", '_',row['last_name'].strip()), parse_date(row['dob'])))
@@ -86,15 +96,20 @@ def get_new_registrations(conn, reg_input='./new_registrations.csv'):
                 # Add matched registration_id to the duplicate entry
                 dupregs.append([search[0]] + list(row.values()))
 
-    # Log duplicate registrations
+    # Be verbose
+    if emptyregs > 0:
+        # Empty registration
+        print("Skipped {} empty rows.".format(emptyregs))
+    
     if len(dupregs) > 1:
-        print("Skipped {} duplicate registrations. View them in {}".format(len(dupregs) - 1, dup_output))
+        # Duplicate registrations
+        print("Skipped {} existing registrations. View them in {}".format(len(dupregs) - 1, dup_output))
         with open(dup_output, 'w') as dupfile:
             writer = csv.writer(dupfile)
             writer.writerows(dupregs)
 
-    # Log invalid registrations
     if len(invregs) > 1:
+        # Invalid registrations
         print("Skipped {} invalid registrations. View them in {}".format(len(invregs) - 1, inv_output))
         with open(inv_output, 'w') as invfile:
             writer = csv.writer(invfile)
@@ -117,6 +132,7 @@ def parse_date(date_str):
 def add_registrations(conn, reglist):
     """Add registrations to the database."""
     c = conn.cursor()
+    newregs = 0
     with conn:
         sql_insert_statement = """INSERT INTO registrations(
                                 registration_id,
@@ -158,11 +174,14 @@ def add_registrations(conn, reglist):
                         reg['registration_timestamp']
                         )
                 c.execute(sql_insert_statement, reginfo)
+                newregs += 1
             except sqlite3.IntegrityError as e:
                 # Likely a duplicate entry in the input file
                 print(e)
                 print("SKIPED: {}".format(reg.values()))
-                print("info: the skiped entry was likely a duplicate withing the input file")
+                print("\tThis skiped entry was likely a duplicate withing the input file")
+    
+    print("Added {} new registrations")
 
 
 def create_start_list(conn, race_date):
