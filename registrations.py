@@ -132,7 +132,7 @@ def parse_date(date_str):
 def add_registrations(conn, reglist):
     """Add registrations to the database."""
     c = conn.cursor()
-    newregs = 0
+    newregsnum = 0
     with conn:
         sql_insert_statement = """INSERT INTO registrations(
                                 registration_id,
@@ -174,14 +174,14 @@ def add_registrations(conn, reglist):
                         reg['registration_timestamp']
                         )
                 c.execute(sql_insert_statement, reginfo)
-                newregs += 1
+                newregsnum += 1
             except sqlite3.IntegrityError as e:
                 # Likely a duplicate entry in the input file
                 print(e)
                 print("SKIPED: {}".format(reg.values()))
                 print("\tThis skiped entry was likely a duplicate withing the input file")
     
-    print("Added {} new registrations")
+    print("Added {} new registrations".format(newregsnum))
 
 
 def create_start_list(conn, race_date):
