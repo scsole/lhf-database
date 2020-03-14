@@ -9,8 +9,27 @@ import csv
 from datetime import datetime, date
 
 
-def create_db(conn):
-    """Create registrations database."""
+def open_db(db_path="./lhf.db"):
+    """Connect to the database and return a connection.
+    
+    If the database does not exist, confirm if one should be created.
+    """
+    if not os.path.isfile(db_path):
+        print("Could not find a database at {}".format(db_path))
+        print("(c)reate a database and continue\n(a)bort all operations")
+        choice = input("Option: ")
+        if choice.lower().strip() == 'c':
+            print("Creating new database at {}".format(db_path))
+        else:
+            print("Aborting, no changes have been made")
+            exit()
+    conn = sqlite3.connect('./lhf.db', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
+    create_registrations_table(conn)
+    return conn
+
+
+def create_registrations_table(conn):
+    """Create registrations table."""
     with conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS registrations (
                     registration_id INTEGER NOT NULL,
@@ -53,63 +72,65 @@ def get_new_registrations(conn, reg_input='./new_registrations.csv'):
                             FROM registrations
                             WHERE first_name LIKE ? AND last_name LIKE ? AND dob = ?"""
     
-    # Date formats expected from csv file.
+    # Datetime formats expected from csv file.
     datetimefmt = "%d/%m/%Y %H:%M:%S"
     datefmt = "%d/%m/%Y"
+    try:
+        with open(reg_input) as regfile:
+            reader = csv.DictReader(regfile, input_csv_headers)
+            dupregs.append(['Existing Registration ID'] + list(next(reader).values())) # skip csv headers
+            invregs.append(['Invalid Reason'] + dupregs[0][1:-1])
 
-    with open(reg_input) as regfile:
-        reader = csv.DictReader(regfile, input_csv_headers)
-        dupregs.append(['Existing Registration ID'] + list(next(reader).values())) # skip actual csv headers
-        invregs.append(['Invalid Reason'] + dupregs[0][1:-1])
-
-        for row in reader:
-            # Skip empty rows
-            if (row['registration_timestamp'] is ''
-                    or row['email'] is ''
-                    or row['first_name'] is ''
-                    or row['first_name'] is ''
-                    or row['gender'] is ''
-                    or row['dob'] is ''):
-                emptyregs += 1
-                continue
-            # Check for duplicates
-            try:
-                c.execute(sql_search_statement, (re.sub(r"[ ']", '_', row['first_name'].strip()), re.sub(r"[ ']", '_',row['last_name'].strip()), parse_date(row['dob'])))
-            except ValueError:
-                invregs.append(["DoB does not match {}".format(datefmt)] + list(row.values()))
-                continue
-            
-            search = c.fetchone()
-            if search is None:
-                newregs.append(row)
-
-                # Convert required strings into dates
-                try:
-                    row['registration_timestamp'] = datetime.strptime(row['registration_timestamp'], datetimefmt)
-                except ValueError:
-                    del(newregs[-1])
-                    invregs.append(["Timestamp does not match {}".format(datetimefmt)] + list(row.values()))
+            for row in reader:
+                # Skip empty rows
+                if (row['registration_timestamp'] == ''
+                        or row['email'] == ''
+                        or row['first_name'] == ''
+                        or row['first_name'] == ''
+                        or row['gender'] == ''
+                        or row['dob'] == ''):
+                    emptyregs += 1
                     continue
-                
-                row['dob'] = parse_date(row['dob'])
-            else:
-                # Add matched registration_id to the duplicate entry
-                dupregs.append([search[0]] + list(row.values()))
+
+                # Check for duplicates
+                try:
+                    c.execute(sql_search_statement, (re.sub(r"[ ']", '_', row['first_name'].strip()), re.sub(r"[ ']", '_',row['last_name'].strip()), parse_date(row['dob'])))
+                except ValueError:
+                    invregs.append(["DoB does not match {}".format(datefmt)] + list(row.values()))
+                    continue
+                search = c.fetchone()
+                if search == None:
+                    newregs.append(row)
+
+                    # Convert required strings into dates
+                    try:
+                        row['registration_timestamp'] = datetime.strptime(row['registration_timestamp'], datetimefmt)
+                    except ValueError:
+                        del(newregs[-1])
+                        invregs.append(["Timestamp does not match {}".format(datetimefmt)] + list(row.values()))
+                        continue
+                    
+                    row['dob'] = parse_date(row['dob'])
+                else:
+                    # Add matched registration_id to the duplicate entry
+                    dupregs.append([search[0]] + list(row.values()))
+    except FileNotFoundError:
+        print("Could not find new registrations csv file.")
+        print("Please check that {} exists and try again".format(reg_input))
+        exit()
+
 
     # Be verbose
     if emptyregs > 0:
-        # Empty registration
         print("Skipped {} empty rows.".format(emptyregs))
     
     if len(dupregs) > 1:
-        # Duplicate registrations
         print("Skipped {} existing registrations. View them in {}".format(len(dupregs) - 1, dup_output))
         with open(dup_output, 'w') as dupfile:
             writer = csv.writer(dupfile)
             writer.writerows(dupregs)
 
     if len(invregs) > 1:
-        # Invalid registrations
         print("Skipped {} invalid registrations. View them in {}".format(len(invregs) - 1, inv_output))
         with open(inv_output, 'w') as invfile:
             writer = csv.writer(invfile)
@@ -135,29 +156,20 @@ def add_registrations(conn, reglist):
     newregsnum = 0
     with conn:
         sql_insert_statement = """INSERT INTO registrations(
-                                registration_id,
-                                first_name,
-                                last_name,
-                                gender,
-                                dob,
-                                club,
-                                email,
-                                medical_conditions,
-                                emergency_name,
-                                emergency_contact,
-                                registration_timestamp
+                                    registration_id,
+                                    first_name,
+                                    last_name,
+                                    gender,
+                                    dob,
+                                    club,
+                                    email,
+                                    medical_conditions,
+                                    emergency_name,
+                                    emergency_contact,
+                                    registration_timestamp
                                 ) VALUES (
                                     (SELECT IFNULL(MAX(registration_id), 0) + 1 FROM registrations),
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?,
-                                    ?
+                                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                                 )"""
         for reg in reglist:
             try:
@@ -179,13 +191,13 @@ def add_registrations(conn, reglist):
                 # Likely a duplicate entry in the input file
                 print(e)
                 print("SKIPED: {}".format(reg.values()))
-                print("\tThis skiped entry was likely a duplicate withing the input file")
+                print("\tThis entry was likely a duplicate within the input file")
     
     print("Added {} new registrations".format(newregsnum))
 
 
 def create_start_list(conn, race_date):
-    """Generate start list for Webscorer."""
+    """Generate a start list for Webscorer."""
     os.makedirs("./startlists", exist_ok=True)
     webscorer_headers = ('Bib', 'First name', 'Last name', 'Team name', 'Age', 'Gender', 'Distance')
     startlist = conn.execute("""SELECT registration_id, first_name, last_name, club, dob, gender
@@ -211,16 +223,6 @@ def create_start_list(conn, race_date):
         writer.writerows(startlist)
 
 
-def years_between(date1, date2):
-    """Return the number of full years between dates."""
-    if date1 > date2:
-        temp = date2
-        date2 = date1
-        date1 = temp
-    date1_this_year = date(date2.year, date1.month, date1.day)
-    return date2.year - date1.year - (date1_this_year > date2)
-
-
 def create_registrations_list(conn):
     """Create a csv file with names and registration ids sorted by last name."""
     os.makedirs("./registrations_output", exist_ok=True)
@@ -240,8 +242,18 @@ def create_registrations_list(conn):
         writer.writerows(reglist)
 
 
+def years_between(date1, date2):
+    """Return the number of years between two dates."""
+    if date1 > date2:
+        temp = date2
+        date2 = date1
+        date1 = temp
+    date1_this_year = date(date2.year, date1.month, date1.day)
+    return date2.year - date1.year - (date1_this_year > date2)
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Manage registrations and produce start lists.")
+    parser = argparse.ArgumentParser(description="Add registrations and produce start lists.")
     parser.add_argument("-a", help="add new registrations to the database",
                         action="store_true")
     parser.add_argument("-s", help="create a startlist for Webscorer",
@@ -253,8 +265,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # connect to database and create tables as required
-    conn = sqlite3.connect('./lhf.db', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
-    create_db(conn)
+    conn = open_db()
 
     # perform required tasks
     if args.a:
