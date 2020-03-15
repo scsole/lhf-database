@@ -209,9 +209,8 @@ def create_start_list(conn, race_date):
                                 FROM registrations
                                 LEFT JOIN race_genders USING(registration_id)
                                 """).fetchall()
-    startlistfile = './startlists/startlist{}.csv'.format(race_date.strftime('%Y%m%d'))
+    outfile = './startlists/startlist{}.csv'.format(race_date.strftime('%Y%m%d'))
 
-    
     if len(startlist) > 0:
         for i,entry in enumerate(startlist):
             startlist[i] = list(entry)
@@ -240,10 +239,11 @@ def create_start_list(conn, race_date):
     else:
         print("warning: the database was empty when creating a start list")
 
-    with open(startlistfile, 'w') as csvfile:
+    with open(outfile, 'w') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(webscorer_headers)
         writer.writerows(startlist)
+        print("New startlist located at: {}".format(outfile))
 
 
 def create_registrations_list(conn):
@@ -263,6 +263,7 @@ def create_registrations_list(conn):
         writer = csv.writer(csvfile)
         writer.writerow(regheaders)
         writer.writerows(reglist)
+        print("New registrations list located at: {}".format(outfile))
 
 
 def years_between(date1, date2):
