@@ -1,20 +1,19 @@
 """Registrations module for the LHF database."""
 
 import argparse
-import sys
-import os
+import csv
 import re
 import sqlite3
-import csv
 from datetime import datetime, date
+from pathlib import Path
 
 
-def open_db(db_path="./lhf.db"):
+def open_db(db_path=Path("lhf.db")):
     """Connect to the database and return a connection.
     
     If the database does not exist, confirm if one should be created.
     """
-    if not os.path.isfile(db_path):
+    if not db_path.is_file():
         print("Could not find a database at {}".format(db_path))
         print("(c)reate a database and continue\n(a)bort all operations")
         choice = input("Option: ")
@@ -23,7 +22,7 @@ def open_db(db_path="./lhf.db"):
         else:
             print("Aborting, no changes have been made")
             exit()
-    conn = sqlite3.connect('./lhf.db', detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
+    conn = sqlite3.connect(db_path, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
     create_registrations_table(conn)
     return conn
 
@@ -60,9 +59,9 @@ def get_new_registrations(conn, reg_input):
     First name, Last name, and DoB. Any duplicates in reg_input will NOT
     be detected.
     """
-    os.makedirs("./registrations_output", exist_ok=True)
-    dup_output = "./registrations_output/duplicate_registrations.csv"
-    inv_output = "./registrations_output/invalid_registrations.csv"
+    confict_dir = Path("import_conflicts")
+    dup_output = confict_dir / "duplicate_registrations.csv"
+    inv_output = confict_dir / "invalid_registrations.csv"
 
     newregs = []    # new registrations w/o headers
     dupregs = []    # duplicate registrations w/ headers
@@ -131,12 +130,14 @@ def get_new_registrations(conn, reg_input):
     
     if len(dupregs) > 1:
         print("Skipped {} existing registrations. View them in {}".format(len(dupregs) - 1, dup_output))
+        confict_dir.mkdir(exist_ok=True)
         with open(dup_output, 'w') as dupfile:
             writer = csv.writer(dupfile)
             writer.writerows(dupregs)
 
     if len(invregs) > 1:
         print("Skipped {} invalid registrations. View them in {}".format(len(invregs) - 1, inv_output))
+        confict_dir.mkdir(exist_ok=True)
         with open(inv_output, 'w') as invfile:
             writer = csv.writer(invfile)
             writer.writerows(invregs)
@@ -158,7 +159,7 @@ def parse_date(date_str):
 def add_registrations(conn, reglist):
     """Add registrations to the database."""
     c = conn.cursor()
-    newregsnum = 0
+    new_regs_num = 0
     with conn:
         sql_insert_statement = """INSERT INTO registrations(
                                     registration_id,
@@ -191,25 +192,26 @@ def add_registrations(conn, reglist):
                         reg['registration_timestamp']
                         )
                 c.execute(sql_insert_statement, reginfo)
-                newregsnum += 1
+                new_regs_num += 1
             except sqlite3.IntegrityError as e:
                 # Likely a duplicate entry in the input file
                 print(e)
                 print("SKIPED: {}".format(reg.values()))
                 print("\tThis entry was likely a duplicate within the input file")
     
-    print("Added {} new registrations".format(newregsnum))
+    print("Added {} new registrations".format(new_regs_num))
 
 
 def create_start_list(conn, race_date):
     """Generate a start list for Webscorer."""
-    os.makedirs("./startlists", exist_ok=True)
+    start_lists_dir = Path("startlists")
+    start_lists_dir.mkdir(exist_ok=True)
     webscorer_headers = ('Bib', 'First name', 'Last name', 'Team name', 'Age', 'Gender', 'Distance')
     startlist = conn.execute("""SELECT registration_id, first_name, last_name, club, dob, registrations.gender, race_genders.gender
                                 FROM registrations
                                 LEFT JOIN race_genders USING(registration_id)
                                 """).fetchall()
-    outfile = './startlists/startlist{}.csv'.format(race_date.strftime('%Y%m%d'))
+    outfile = start_lists_dir / "startlist{}.csv".format(race_date.strftime('%Y%m%d'))
 
     if len(startlist) > 0:
         for i,entry in enumerate(startlist):
@@ -248,8 +250,9 @@ def create_start_list(conn, race_date):
 
 def create_registrations_list(conn):
     """Create a csv file with names and registration ids sorted by last name."""
-    os.makedirs("./registrations_output", exist_ok=True)
-    outfile="./registrations_output/registrations_list_{}.csv".format(datetime.today().strftime("%Y%b%d-%H%M"))
+    reg_lists_dir = Path("registration_lists")
+    reg_lists_dir.mkdir(exist_ok=True)
+    outfile = reg_lists_dir / "registrations_list_{}.csv".format(datetime.today().strftime("%Y%b%d-%H%M"))
 
     reglist = conn.execute("""SELECT last_name, first_name, registration_id
                                 FROM registrations
@@ -278,8 +281,8 @@ def years_between(date1, date2):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Add registrations and produce start lists.")
-    parser.add_argument("newregs", nargs='?', help="path to registrations csv file when -a is specified, default='./new_registrations.csv'",
-                        default="./new_registrations.csv")
+    parser.add_argument("newregs", nargs='?', help="path to registrations csv file when -a is specified, default='new_registrations.csv'",
+                        default=Path("new_registrations.csv"))
     parser.add_argument("-a", help="add new registrations to the database",
                         action="store_true")
     parser.add_argument("-s", help="create a startlist for Webscorer",
@@ -290,10 +293,8 @@ if __name__ == "__main__":
                         action="store_true")
     args = parser.parse_args()
     
-    # connect to database and create tables as required
     conn = open_db()
 
-    # perform required tasks
     if args.a:
         add_registrations(conn, get_new_registrations(conn, args.newregs))
     
@@ -302,7 +303,7 @@ if __name__ == "__main__":
             try:
                 input_date = datetime.strptime(args.d, "%Y-%m-%d").date()
             except ValueError:
-                print("error: date D must be given as YYYY-MM-DD", file=sys.stderr)
+                print("Error: date D must be given as YYYY-MM-DD")
                 exit()
         else:
             input_date = args.d
