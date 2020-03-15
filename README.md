@@ -1,6 +1,14 @@
 # LHF Database
 
-Database backend for the Leith Harbour Free. This database is used to store runner information, and generate start lists for Webscorer.
+Database management for the Leith Harbour Free 5km or 10km race.
+
+The database currently stores runner information. The purpose of this project was to *quickly* perform the following operations:
+
+- Insert new registrations from an existing Google Form
+- Generate startlists compatible with Webscorer
+- Generate registration lists for our website
+
+Other management tasks, such as updating or deleting registrations, should be performed with programs such as [DB Browser for SQLite](https://sqlitebrowser.org/). The database **must** be stored securely with restricted access.
 
 ## Usage
 
@@ -10,7 +18,7 @@ Requires Python version >= 3.5
 python registrations.py [-h] [-a] [-s] [-d D] [-l] [newregs]
 ```
 
-```bash
+```
 positional arguments:
   newregs     path to registrations csv file when -a is specified, default='new_registrations.csv'
 
@@ -22,6 +30,8 @@ optional arguments:
   -l          create registration list for the website
 ```
 
+If a database does not exist or cannot be located, the program can create a new one.
+
 ## Examples
 
 ### Add new runners
@@ -32,7 +42,7 @@ Download new registrations as csv file from Google forms. Then run:
 python registrations.py -a /path/to/csvfile
 ```
 
-If any duplicate or invalid entries were identified, a nessage will be displayed. If required, skiped entries can be corrected (e.g. in Excel) then saved as a new csv file. The previous command can then be run again with the new file to inset these entries.
+If any duplicate or invalid entries were identified, a message will be displayed. If required, skipped entries can be corrected (e.g. in Excel) then saved as a new csv file. The previous command can then be run again with the new file to inset these entries.
 
 ### Create a startlist
 
