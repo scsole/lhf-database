@@ -275,7 +275,11 @@ def years_between(date1, date2):
         temp = date2
         date2 = date1
         date1 = temp
-    date1_this_year = date(date2.year, date1.month, date1.day)
+    try:
+        date1_this_year = date(date2.year, date1.month, date1.day)
+    except ValueError:
+        # Encounted a leap year
+        date1_this_year = date(date2.year, 3, 1)
     return date2.year - date1.year - (date1_this_year > date2)
 
 
