@@ -52,7 +52,7 @@ def create_registrations_table(conn):
                     )""")
 
 
-def get_new_registrations(conn, reg_input='./new_registrations.csv'):
+def get_new_registrations(conn, reg_input):
     """Read new registration csv file and return a list with new entries.
 
     Duplicate enties are loged to dup_output if any exist. Registrations
@@ -120,8 +120,8 @@ def get_new_registrations(conn, reg_input='./new_registrations.csv'):
                     # Add matched registration_id to the duplicate entry
                     dupregs.append([search[0]] + list(row.values()))
     except FileNotFoundError:
-        print("Could not find new registrations csv file.")
-        print("Please check that {} exists and try again".format(reg_input))
+        print("Error: Could not find {}".format(reg_input))
+        print("       Please check that this file exists before trying again.")
         exit()
 
 
@@ -278,6 +278,8 @@ def years_between(date1, date2):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Add registrations and produce start lists.")
+    parser.add_argument("newregs", nargs='?', help="path to registrations csv file when -a is specified, default='./new_registrations.csv'",
+                        default="./new_registrations.csv")
     parser.add_argument("-a", help="add new registrations to the database",
                         action="store_true")
     parser.add_argument("-s", help="create a startlist for Webscorer",
@@ -293,7 +295,7 @@ if __name__ == "__main__":
 
     # perform required tasks
     if args.a:
-        add_registrations(conn, get_new_registrations(conn))
+        add_registrations(conn, get_new_registrations(conn, args.newregs))
     
     if args.s:
         if isinstance(args.d, str):
