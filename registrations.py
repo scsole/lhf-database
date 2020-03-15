@@ -32,7 +32,7 @@ def create_registrations_table(conn):
     """Create registrations table."""
     with conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS registrations (
-                    registration_id INTEGER NOT NULL,
+                    registration_id INTEGER NOT NULL UNIQUE,
                     first_name TEXT NOT NULL,
                     last_name TEXT NOT NULL,
                     gender TEXT NOT NULL,
@@ -44,6 +44,11 @@ def create_registrations_table(conn):
                     emergency_contact TEXT NOT NULL,
                     registration_timestamp timestamp NOT NULL,
                     PRIMARY KEY(last_name, first_name, dob)
+                    )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS race_genders (
+                    registration_id INTEGER NOT NULL UNIQUE,
+                    gender TEXT NOT NULL,
+                    FOREIGN KEY(registration_id) REFERENCES registrations(registration_id)
                     )""")
 
 
@@ -200,19 +205,37 @@ def create_start_list(conn, race_date):
     """Generate a start list for Webscorer."""
     os.makedirs("./startlists", exist_ok=True)
     webscorer_headers = ('Bib', 'First name', 'Last name', 'Team name', 'Age', 'Gender', 'Distance')
-    startlist = conn.execute("""SELECT registration_id, first_name, last_name, club, dob, gender
-                                FROM registrations""").fetchall()
+    startlist = conn.execute("""SELECT registration_id, first_name, last_name, club, dob, registrations.gender, race_genders.gender
+                                FROM registrations
+                                LEFT JOIN race_genders USING(registration_id)
+                                """).fetchall()
     startlistfile = './startlists/startlist{}.csv'.format(race_date.strftime('%Y%m%d'))
 
-    # We don't know what distance each runner will undertake ahead of the
-    # event. We just need to include each distance at least once.
+    
     if len(startlist) > 0:
         for i,entry in enumerate(startlist):
             startlist[i] = list(entry)
-            startlist[i].append('5km')
 
+            # Alter non-binary genders
+            gender = startlist[i].pop()
+            if gender != None:
+                if startlist[i][5].lower() == "non-binary":
+                    startlist[i][5] = gender
+                else:
+                    print("Warning: Conflicting genders for registration_id={}".format(startlist[i][0]))
+                    print("\t Please check that entries in race_genders only match registrations with 'Non-binary' genders.")
+            elif startlist[i][5].lower() == "non-binary":
+                print("Warning: No race gender specified for registration_id={}".format(startlist[i][0]))
+                print("\t Please add an entry to race_genders and recreate this startlist")
+            
             # Replace DoB with age at time of race
             startlist[i][4] = years_between(startlist[i][4], race_date)
+            
+            # Race distance
+            startlist[i].append('5km')
+        
+        # We don't know what distance each runner will undertake ahead of the
+        # event. We just need to include each distance at least once.
         startlist[0][-1] = '10km'
     else:
         print("warning: the database was empty when creating a start list")
