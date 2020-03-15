@@ -289,7 +289,7 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument("-d", help="date of the next race as YYYY-MM-DD, default=today",
                         default=date.today())
-    parser.add_argument("-l", help="create registrations list for the website",
+    parser.add_argument("-l", help="create registration list for the website",
                         action="store_true")
     args = parser.parse_args()
     
