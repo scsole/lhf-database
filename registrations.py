@@ -131,14 +131,14 @@ def get_new_registrations(conn, reg_input):
     if len(dupregs) > 1:
         print("Skipped {} existing registrations. View them in {}".format(len(dupregs) - 1, dup_output))
         confict_dir.mkdir(exist_ok=True)
-        with open(dup_output, 'w') as dupfile:
+        with open(dup_output, 'w', newline='') as dupfile:
             writer = csv.writer(dupfile)
             writer.writerows(dupregs)
 
     if len(invregs) > 1:
         print("Skipped {} invalid registrations. View them in {}".format(len(invregs) - 1, inv_output))
         confict_dir.mkdir(exist_ok=True)
-        with open(inv_output, 'w') as invfile:
+        with open(inv_output, 'w', newline='') as invfile:
             writer = csv.writer(invfile)
             writer.writerows(invregs)
     
@@ -241,7 +241,7 @@ def create_start_list(conn, race_date):
     else:
         print("warning: the database was empty when creating a start list")
 
-    with open(outfile, 'w') as csvfile:
+    with open(outfile, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(webscorer_headers)
         writer.writerows(startlist)
@@ -262,7 +262,7 @@ def create_registrations_list(conn):
     if len(reglist)  == 0:
         print("warning: the database was empty when creating a registrations list")
 
-    with open(outfile, 'w') as csvfile:
+    with open(outfile, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(regheaders)
         writer.writerows(reglist)
