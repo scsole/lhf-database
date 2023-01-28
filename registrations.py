@@ -53,19 +53,17 @@ def create_registrations_table(conn):
 
 
 def get_new_registrations(conn, reg_input):
-    """Read new registration csv file and return a list with new entries.
+    """Read new registrations csv file and return lists for new and updated entries.
 
-    Duplicate entries are logged to dup_output if any exist. Registrations
-    are considered duplicate if they do not have a unique combination of
-    First name, Last name, and DoB. Any duplicates in reg_input will NOT
-    be detected.
+    Registrations are considered updated if they do not have a unique
+    combination of First name, Last name, and DoB. Any duplicates in reg_input
+    will NOT be detected.
     """
     conflict_dir = Path("import_conflicts")
-    dup_output = conflict_dir / "duplicate_registrations.csv"
     inv_output = conflict_dir / "invalid_registrations.csv"
 
     newregs = []    # new registrations w/o headers
-    dupregs = []    # duplicate registrations w/ headers
+    updregs = []    # updated registrations w/o headers
     invregs = []    # invalid registrations w/ headers
     emptyregs = 0
     
@@ -83,8 +81,7 @@ def get_new_registrations(conn, reg_input):
     try:
         with open(reg_input) as regfile:
             reader = csv.DictReader(regfile, input_csv_headers)
-            dupregs.append(['Existing Registration ID'] + list(next(reader).values())) # skip csv headers
-            invregs.append(['Invalid Reason'] + dupregs[0][1:-1])
+            invregs.append(['Invalid Reason'] + list(next(reader).values())) # skip csv headers
 
             for row in reader:
                 # Skip empty rows
@@ -103,23 +100,24 @@ def get_new_registrations(conn, reg_input):
                 except ValueError:
                     invregs.append(["DoB does not match {}".format(datefmt)] + list(row.values()))
                     continue
+                
+                # Convert required strings into dates
+                try:
+                    row['created'] = datetime.strptime(row['created'], datetimefmt)
+                except ValueError:
+                    invregs.append(["Timestamp does not match {}".format(datetimefmt)] + list(row.values()))
+                    continue
+
+                row['dob'] = parse_date(row['dob'])
+                row['last_updated'] = row['created']
+
+                # Add valid registration to the appropriate list
                 search = c.fetchone()
                 if search == None:
                     newregs.append(row)
-
-                    # Convert required strings into dates
-                    try:
-                        row['created'] = datetime.strptime(row['created'], datetimefmt)
-                    except ValueError:
-                        del(newregs[-1])
-                        invregs.append(["Timestamp does not match {}".format(datetimefmt)] + list(row.values()))
-                        continue
-
-                    row['dob'] = parse_date(row['dob'])
-                    row['last_updated'] = row['created']
                 else:
-                    # Add matched registration_id to the duplicate entry
-                    dupregs.append([search[0]] + list(row.values()))
+                    updregs.append(row)
+
     except FileNotFoundError:
         print("Error: Could not find {}".format(reg_input))
         print("       Please check that this file exists before trying again.")
@@ -129,13 +127,6 @@ def get_new_registrations(conn, reg_input):
     if emptyregs > 0:
         print("Skipped {} empty rows.".format(emptyregs))
     
-    if len(dupregs) > 1:
-        print("Skipped {} existing registrations. View them in {}".format(len(dupregs) - 1, dup_output))
-        conflict_dir.mkdir(exist_ok=True)
-        with open(dup_output, 'w', newline='') as dupfile:
-            writer = csv.writer(dupfile)
-            writer.writerows(dupregs)
-
     if len(invregs) > 1:
         print("Skipped {} invalid registrations. View them in {}".format(len(invregs) - 1, inv_output))
         conflict_dir.mkdir(exist_ok=True)
@@ -143,7 +134,7 @@ def get_new_registrations(conn, reg_input):
             writer = csv.writer(invfile)
             writer.writerows(invregs)
     
-    return newregs
+    return newregs, updregs
 
 
 def parse_date(date_str):
@@ -204,6 +195,45 @@ def add_registrations(conn, reglist):
     
     print("Added {} new registrations".format(new_regs_num))
 
+def update_registrations(conn, reglist):
+    """Update existing registrations in the database."""
+    c = conn.cursor()
+    update_regs_num = 0
+    with conn:
+        sql_update_statement = """UPDATE registrations
+                                SET
+                                    gender = ?,
+                                    club = ?,
+                                    email = ?,
+                                    medical_conditions = ?,
+                                    emergency_name = ?,
+                                    emergency_contact = ?,
+                                    last_updated = ?
+                                WHERE
+                                    first_name = ? AND last_name = ? AND dob = ?"""
+        for reg in reglist:
+            try:
+                reginfo = (
+                        reg['gender'].strip(),
+                        reg['club'].strip(),
+                        reg['email'].strip(),
+                        reg['medical_conditions'].strip(),
+                        reg['emergency_name'].strip(),
+                        reg['emergency_contact'].strip(),
+                        reg['created'],
+                        reg['first_name'].strip(),
+                        reg['last_name'].strip(),
+                        reg['dob']
+                        )
+                c.execute(sql_update_statement, reginfo)
+                update_regs_num += 1
+            except sqlite3.Error as e:
+                print(e)
+                print("ERROR: Unable to update row for [{}, {}, {}]".format(
+                    reg['first_name'].strip(), reg['last_name'].strip(), reg['dob']))
+    
+    print("Updated {} registrations".format(update_regs_num))
+
 
 def create_start_list(conn, race_date):
     """Generate a start list for Webscorer."""
@@ -226,10 +256,10 @@ def create_start_list(conn, race_date):
                 if startlist[i][5].lower() == "non-binary":
                     startlist[i][5] = gender
                 else:
-                    print("Warning: Conflicting genders for registration_id={}".format(startlist[i][0]))
+                    print("WARN: Conflicting genders for registration_id={}".format(startlist[i][0]))
                     print("\t Please check that entries in race_genders only match registrations with 'Non-binary' genders.")
             elif startlist[i][5].lower() == "non-binary":
-                print("Warning: No race gender specified for registration_id={}".format(startlist[i][0]))
+                print("WARN: No race gender specified for registration_id={}".format(startlist[i][0]))
                 print("\t Please add an entry to race_genders and recreate this startlist")
             
             # Replace DoB with age at time of race
@@ -242,7 +272,7 @@ def create_start_list(conn, race_date):
         # event. We just need to include each distance at least once.
         startlist[0][-1] = '10km'
     else:
-        print("warning: the database was empty when creating a start list")
+        print("WARN: the database was empty when creating a start list")
 
     with open(outfile, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -263,7 +293,7 @@ def create_registrations_list(conn):
     regheaders = ('Last Name', 'First Name', 'Bib Number')
 
     if len(reglist)  == 0:
-        print("warning: the database was empty when creating a registrations list")
+        print("WARN: the database was empty when creating a registrations list")
 
     with open(outfile, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -281,7 +311,7 @@ def years_between(date1, date2):
     try:
         date1_this_year = date(date2.year, date1.month, date1.day)
     except ValueError:
-        # Encounted a leap year
+        # Encountered a leap year
         date1_this_year = date(date2.year, 3, 1)
     return date2.year - date1.year - (date1_this_year > date2)
 
@@ -303,7 +333,9 @@ if __name__ == "__main__":
     conn = open_db()
 
     if args.a:
-        add_registrations(conn, get_new_registrations(conn, args.newregs))
+        new_registrations, updated_registrations = get_new_registrations(conn, args.newregs)
+        add_registrations(conn, new_registrations)
+        update_registrations(conn, updated_registrations)
     
     if args.s:
         if isinstance(args.d, str):
