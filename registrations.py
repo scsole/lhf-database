@@ -41,7 +41,8 @@ def create_registrations_table(conn):
                     medical_conditions TEXT,
                     emergency_name TEXT NOT NULL,
                     emergency_contact TEXT NOT NULL,
-                    registration_timestamp timestamp NOT NULL,
+                    created timestamp NOT NULL,
+                    last_updated timestamp NOT NULL,
                     PRIMARY KEY(last_name, first_name, dob)
                     )""")
         conn.execute("""CREATE TABLE IF NOT EXISTS race_genders (
@@ -69,7 +70,7 @@ def get_new_registrations(conn, reg_input):
     emptyregs = 0
     
     # Keys for newregs. These must match the order of the headers in reg_input.
-    input_csv_headers = ('registration_timestamp', 'email', 'first_name', 'last_name', 'gender', 'dob', 'age', 'club', 'medical_conditions', 'emergency_name', 'emergency_contact', 'accepted_terms')
+    input_csv_headers = ('created', 'email', 'first_name', 'last_name', 'gender', 'dob', 'age', 'club', 'medical_conditions', 'emergency_name', 'emergency_contact', 'accepted_terms')
 
     c = conn.cursor()
     sql_search_statement = """SELECT registration_id
@@ -87,7 +88,7 @@ def get_new_registrations(conn, reg_input):
 
             for row in reader:
                 # Skip empty rows
-                if (row['registration_timestamp'] == ''
+                if (row['created'] == ''
                         or row['email'] == ''
                         or row['first_name'] == ''
                         or row['first_name'] == ''
@@ -108,13 +109,14 @@ def get_new_registrations(conn, reg_input):
 
                     # Convert required strings into dates
                     try:
-                        row['registration_timestamp'] = datetime.strptime(row['registration_timestamp'], datetimefmt)
+                        row['created'] = datetime.strptime(row['created'], datetimefmt)
                     except ValueError:
                         del(newregs[-1])
                         invregs.append(["Timestamp does not match {}".format(datetimefmt)] + list(row.values()))
                         continue
                     
                     row['dob'] = parse_date(row['dob'])
+                    row['last_updated'] = row['created']
                 else:
                     # Add matched registration_id to the duplicate entry
                     dupregs.append([search[0]] + list(row.values()))
@@ -172,10 +174,11 @@ def add_registrations(conn, reglist):
                                     medical_conditions,
                                     emergency_name,
                                     emergency_contact,
-                                    registration_timestamp
+                                    created,
+                                    last_updated
                                 ) VALUES (
                                     (SELECT IFNULL(MAX(registration_id), 0) + 1 FROM registrations),
-                                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                                 )"""
         for reg in reglist:
             try:
@@ -189,7 +192,8 @@ def add_registrations(conn, reglist):
                         reg['medical_conditions'].strip(),
                         reg['emergency_name'].strip(),
                         reg['emergency_contact'].strip(),
-                        reg['registration_timestamp']
+                        reg['created'],
+                        reg['last_updated']
                         )
                 c.execute(sql_insert_statement, reginfo)
                 new_regs_num += 1
