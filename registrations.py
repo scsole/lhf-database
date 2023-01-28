@@ -229,8 +229,8 @@ def update_registrations(conn, reglist):
                 update_regs_num += 1
             except sqlite3.Error as e:
                 print(e)
-                print("ERROR: Unable to update row for [{}, {}, {}]".format(
-                    reg['first_name'].strip(), reg['last_name'].strip(), reg['dob']))
+                print("ERROR: Unable to update row: {}, {} ({})".format(
+                    reg['last_name'].strip(), reg['first_name'].strip(), reg['dob']))
     
     print("Updated {} registrations".format(update_regs_num))
 
