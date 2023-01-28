@@ -55,14 +55,14 @@ def create_registrations_table(conn):
 def get_new_registrations(conn, reg_input):
     """Read new registration csv file and return a list with new entries.
 
-    Duplicate enties are loged to dup_output if any exist. Registrations
+    Duplicate entries are logged to dup_output if any exist. Registrations
     are considered duplicate if they do not have a unique combination of
     First name, Last name, and DoB. Any duplicates in reg_input will NOT
     be detected.
     """
-    confict_dir = Path("import_conflicts")
-    dup_output = confict_dir / "duplicate_registrations.csv"
-    inv_output = confict_dir / "invalid_registrations.csv"
+    conflict_dir = Path("import_conflicts")
+    dup_output = conflict_dir / "duplicate_registrations.csv"
+    inv_output = conflict_dir / "invalid_registrations.csv"
 
     newregs = []    # new registrations w/o headers
     dupregs = []    # duplicate registrations w/ headers
@@ -114,7 +114,7 @@ def get_new_registrations(conn, reg_input):
                         del(newregs[-1])
                         invregs.append(["Timestamp does not match {}".format(datetimefmt)] + list(row.values()))
                         continue
-                    
+
                     row['dob'] = parse_date(row['dob'])
                     row['last_updated'] = row['created']
                 else:
@@ -125,21 +125,20 @@ def get_new_registrations(conn, reg_input):
         print("       Please check that this file exists before trying again.")
         exit()
 
-
     # Be verbose
     if emptyregs > 0:
         print("Skipped {} empty rows.".format(emptyregs))
     
     if len(dupregs) > 1:
         print("Skipped {} existing registrations. View them in {}".format(len(dupregs) - 1, dup_output))
-        confict_dir.mkdir(exist_ok=True)
+        conflict_dir.mkdir(exist_ok=True)
         with open(dup_output, 'w', newline='') as dupfile:
             writer = csv.writer(dupfile)
             writer.writerows(dupregs)
 
     if len(invregs) > 1:
         print("Skipped {} invalid registrations. View them in {}".format(len(invregs) - 1, inv_output))
-        confict_dir.mkdir(exist_ok=True)
+        conflict_dir.mkdir(exist_ok=True)
         with open(inv_output, 'w', newline='') as invfile:
             writer = csv.writer(invfile)
             writer.writerows(invregs)
