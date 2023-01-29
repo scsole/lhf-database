@@ -119,7 +119,7 @@ def get_new_registrations(conn, reg_input):
                     updregs.append(row)
 
     except FileNotFoundError:
-        print("Error: Could not find {}".format(reg_input))
+        print("ERROR: Could not find {}".format(reg_input))
         print("       Please check that this file exists before trying again.")
         exit()
 
@@ -149,7 +149,11 @@ def parse_date(date_str):
 
 
 def add_registrations(conn, reglist):
-    """Add registrations to the database."""
+    """Add registrations to the database.
+    
+    Returns a list of duplicate registrations, if any, that were not inserted."""
+    duplicate_registrations = []    # registrations which could not be inserted due to primary key constraints
+    
     c = conn.cursor()
     new_regs_num = 0
     with conn:
@@ -187,13 +191,19 @@ def add_registrations(conn, reglist):
                         )
                 c.execute(sql_insert_statement, reginfo)
                 new_regs_num += 1
+                
             except sqlite3.IntegrityError as e:
                 # Likely a duplicate entry in the input file
+                duplicate_registrations.append(reg)
+
+            except sqlite3.Error as e:
                 print(e)
-                print("SKIPED: {}".format(reg.values()))
-                print("\tThis entry was likely a duplicate within the input file")
+                print("ERROR: Unable to insert row for: {}, {} ({})".format(
+                    reg['last_name'].strip(), reg['first_name'].strip(), reg['dob']))
     
-    print("Added {} new registrations".format(new_regs_num))
+    print("Added {} new registration(s)".format(new_regs_num))
+    return duplicate_registrations
+
 
 def update_registrations(conn, reglist):
     """Update existing registrations in the database."""
@@ -232,7 +242,7 @@ def update_registrations(conn, reglist):
                 print("ERROR: Unable to update row: {}, {} ({})".format(
                     reg['last_name'].strip(), reg['first_name'].strip(), reg['dob']))
     
-    print("Updated {} registrations".format(update_regs_num))
+    print("Updated {} registration(s)".format(update_regs_num))
 
 
 def create_start_list(conn, race_date):
@@ -334,15 +344,18 @@ if __name__ == "__main__":
 
     if args.a:
         new_registrations, updated_registrations = get_new_registrations(conn, args.newregs)
-        add_registrations(conn, new_registrations)
+        duplicate_registrations = add_registrations(conn, new_registrations)
         update_registrations(conn, updated_registrations)
-    
+        if duplicate_registrations:
+            print("Encountered {} duplicate registration(s), updating...".format(len(duplicate_registrations)))
+            update_registrations(conn, duplicate_registrations)
+
     if args.s:
         if isinstance(args.d, str):
             try:
                 input_date = datetime.strptime(args.d, "%Y-%m-%d").date()
             except ValueError:
-                print("Error: date D must be given as YYYY-MM-DD")
+                print("ERROR: date D must be given as YYYY-MM-DD")
                 exit()
         else:
             input_date = args.d
