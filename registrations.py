@@ -201,7 +201,7 @@ def add_registrations(conn, reglist):
                 print("ERROR: Unable to insert row for: {}, {} ({})".format(
                     reg['last_name'].strip(), reg['first_name'].strip(), reg['dob']))
     
-    print("Added {} new registration(s)".format(new_regs_num))
+    print("Added {} registration(s)".format(new_regs_num))
     return duplicate_registrations
 
 
@@ -245,7 +245,7 @@ def update_registrations(conn, reglist):
     print("Updated {} registration(s)".format(update_regs_num))
 
 
-def create_start_list(conn, race_date):
+def create_start_list(conn, race_date, file_name=""):
     """Generate a start list for Webscorer."""
     start_lists_dir = Path("startlists")
     start_lists_dir.mkdir(exist_ok=True)
@@ -254,7 +254,12 @@ def create_start_list(conn, race_date):
                                 FROM registrations
                                 LEFT JOIN race_genders USING(registration_id)
                                 """).fetchall()
-    outfile = start_lists_dir / "startlist{}.csv".format(race_date.strftime('%Y%m%d'))
+    
+    if not file_name.strip():
+        file_name = "startlist{}.csv".format(race_date.strftime('%Y%m%d'))
+    elif not file_name.strip().endswith(".csv"):
+        file_name = "{}.csv".format(file_name)
+    outfile = start_lists_dir / file_name
 
     if len(startlist) > 0:
         for i,entry in enumerate(startlist):
@@ -334,7 +339,9 @@ if __name__ == "__main__":
                         action="store_true")
     parser.add_argument("-s", help="create a startlist for Webscorer",
                         action="store_true")
-    parser.add_argument("-d", help="date of the next race as YYYY-MM-DD, default=today",
+    parser.add_argument("-n", help="optional name for the startlist file; Webscorer uses this for the race name by default",
+                        default="")
+    parser.add_argument("-d", help="optional date for the next race as YYYY-MM-DD, default=today",
                         default=date.today())
     parser.add_argument("-l", help="create registration list for the website",
                         action="store_true")
@@ -359,7 +366,7 @@ if __name__ == "__main__":
                 exit()
         else:
             input_date = args.d
-        create_start_list(conn, input_date)
+        create_start_list(conn, input_date, args.n)
 
     if args.l:
         create_registrations_list(conn)
