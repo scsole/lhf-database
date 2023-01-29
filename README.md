@@ -2,13 +2,19 @@
 
 Database management for the Leith Harbour Free 5km or 10km race.
 
-The database currently stores runner information. The purpose of this project was to *quickly* perform the following operations:
+The database currently stores runner information. The purpose of this project is to *quickly* perform the following
+operations:
 
 - Insert new registrations from an existing Google Form
+- Update existing registrations which were resubmitted via the Google Form
 - Generate startlists compatible with Webscorer
 - Generate registration lists for our website
 
-Other management tasks, such as updating or deleting registrations, should be performed with programs such as [DB Browser for SQLite](https://sqlitebrowser.org/). The database **must** be stored securely with restricted access.
+Other management tasks, such as deleting registrations, should be performed with programs such as [DB Browser for
+SQLite](https://sqlitebrowser.org/). The database **must** be stored securely.
+
+> **Breaking changes**: v2 added the field `last_updated` and renamed the field `registration_timestamp` to `created`.
+> Existing databases schemas must be manually updated. See the updating procedure section for details.
 
 ## Usage
 
@@ -42,12 +48,30 @@ Download new registrations as csv file from Google forms. Then run:
 python registrations.py -a /path/to/csvfile
 ```
 
-If any duplicate or invalid entries were identified, a message will be displayed. If required, skipped entries can be corrected (e.g. in Excel) then saved as a new csv file. The previous command can then be run again with the new file to inset these entries.
+If any duplicate or invalid entries were identified, a message will be displayed. If required, skipped entries can be
+corrected (e.g. in Excel) then saved as a new csv file. The previous command can then be run again with the new file to
+inset these entries.
 
 ### Create a startlist
 
-To create a startlist ready to be uploaded to Webscorer append `-s` to the command. This assumes the race will be held today and will calculate runner's ages accordingly. To specify a race date, append `-d <date_of_race>` to the command. For example if the race is to be held on 2049-12-31, run:
+To create a startlist ready to be uploaded to Webscorer append `-s` to the command. This assumes the race will be held
+today and will calculate runner's ages accordingly. To specify a race date, append `-d <date_of_race>` to the command.
+For example if the race is to be held on 2049-12-31, run:
 
 ```bash
 python registrations.py -sd 2049-12-31
+```
+
+## Updating to new versions
+
+### v1 to v2
+
+```sql
+ALTER TABLE registrations
+RENAME COLUMN registration_timestamp TO created;
+
+ALTER TABLE registrations
+ADD last_updated timestamp;
+
+UPDATE registrations SET last_updated = created;
 ```
